@@ -1,0 +1,5 @@
+#!/bin/sh
+sleep 15
+# Don't need to run as root
+#sudo python /home/pi/scripts/photobooth/photo_booth.py
+python /home/pi/scripts/photobooth/photo_booth.py

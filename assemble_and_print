@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Let's setup some variables
+PB_label_dir="/home/pi/photoBooth_labels/"
+suffix=$(date +%H%M%S)
+# Select random label from the photoBoothLabels dir:
+PB_label="/this/will/never/exist"
+files=(${PB_label_dir}*)
+if [ ${#files[@]} -gt 0 ];
+then
+  PB_label="${files[RANDOM % ${#files[@]}]}"
+fi
+
+# Look for an argument, if not set or false then do not print
+print_me=$1
+if [ $# -eq 0 ]
+then
+  print_me="false"
+fi
+
+# Make sure our montage directory exists
+mkdir -p /home/pi/photoBooth_montages
+mkdir -p /home/pi/PhotoBooth_archive
+
+# Make a copy of the original files on remote server
+/usr/bin/rsync -e "ssh -p 22" --recursive /home/pi/photobooth_images/ pete@192.168.2.75:/m1/PB_Originals_archive
+wait
+
+mogrify -resize 968x648 /home/pi/photobooth_images/*.jpg
+wait
+montage /home/pi/photobooth_images/*.jpg -tile 2x2 -geometry +10+10 -fill "#FF9100" -background "#FF9100" /home/pi/photoBooth_montages/temp_montage2.jpg
+wait
+if [ -f "$PB_label" ];
+then
+  #echo "label found"
+  montage /home/pi/photoBooth_montages/temp_montage2.jpg ${PB_label} -tile 2x1 -geometry +5+5 -fill "#FF9100" -background "#FF9100" /home/pi/photoBooth_montages/temp_montage3.jpg
+  wait
+fi
+if [ "$print_me" = true ] ;
+then
+  #echo "Doing some printing"
+  lp -d Canon_CP900 /home/pi/photoBooth_montages/temp_montage3.jpg
+  wait
+fi
+
+# Do not copy, will handle by offloading below.
+#cp /home/pi/photoBooth_montages/temp_montage3.jpg /home/pi/PhotoBooth_archive/PB_${suffix}.jpg
+
+mv /home/pi/photoBooth_montages/temp_montage2.jpg /home/pi/photoBooth_montages/PB_${suffix}_montage_nolabel.jpg
+wait
+
+# Instead of deleting, rsync these masters to share for the slideshow:
+/usr/bin/rsync -e "ssh -p 22" --recursive --remove-source-files /home/pi/photobooth_images/ pete@192.168.2.75:/m1/photobooth/
+wait
+# If there is a label, then a temp_montage3.jpg is created, no need to keep the non-labled version in slideshow
+if [ -f "$PB_label" ];
+then
+  #echo "$PB_label was found"
+  mv /home/pi/photoBooth_montages/temp_montage3.jpg /home/pi/photoBooth_montages/PB_${suffix}_montage.jpg
+  wait
+  /usr/bin/rsync -e "ssh -p 22" --recursive --remove-source-files /home/pi/photoBooth_montages/ --include="PB_${suffix}_montage_nolabel.jpg" --exclude="*" pete@192.168.2.75:/m1/PB_archive
+  wait
+fi
+
+# Rsync then delete the remaining files  to the slideshow...
+/usr/bin/rsync -e "ssh -p 22" --recursive --remove-source-files /home/pi/photoBooth_montages/ pete@192.168.2.75:/m1/photobooth/
+wait
